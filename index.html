@@ -34,6 +34,14 @@
 
     /* small UI tweaks */
     .loading { opacity: 0.8; }
+
+    /* --- center button pointer-events trick ---
+       Make the circular surface ignore pointer events so the wheel underneath receives move events,
+       but let a child inside handle click/tap.
+    */
+    #center { pointer-events: none; }
+    #center > * { pointer-events: auto; }
+
   </style>
 </head>
 <body class="min-h-screen flex items-center justify-center p-4 text-slate-100">
@@ -57,7 +65,11 @@
         <button id="prev-btn" class="absolute left-6 top-1/2 -translate-y-1/2 text-xs text-slate-200">◀</button>
         <button id="next-btn" class="absolute right-6 top-1/2 -translate-y-1/2 text-xs text-slate-200">▶</button>
         <button id="play-btn" class="absolute bottom-6 left-1/2 -translate-x-1/2 text-xs text-slate-200">▶/▮▮</button>
-        <div id="center" class="center-btn w-28 h-28 rounded-full bg-slate-600 flex items-center justify-center text-slate-100 font-semibold">OK</div>
+
+        <!-- center uses a child clickable element so pointermove can pass through -->
+        <div id="center" class="center-btn w-28 h-28 rounded-full bg-slate-600 flex items-center justify-center text-slate-100 font-semibold">
+          <div id="center-click" class="w-full h-full flex items-center justify-center">OK</div>
+        </div>
       </div>
     </div>
     <div class="text-[11px] text-slate-400 mt-3">Single-file demo · Tailwind · Vanilla JS · Responsive</div>
@@ -184,7 +196,11 @@
       </div>
     `); document.getElementById('login').addEventListener('click', startAuth); setStatus('Not logged in'); } else { renderMainMenu(); setStatus('Connected','text-emerald-400'); } }
 
-  function renderMainMenu(){ state.selectedIndex = 0; const items = state.menuItems.map((m,i)=>`<div class="py-2 px-3 ${i===state.selectedIndex? 'bg-slate-700 rounded' : ''}" data-i="${i}">${escapeHtml(m)}</div>`).join(''); renderScreen(`<div class="h-full overflow-hidden"><div class="space-y-1">${items}</div></div>`); }
+  function renderMainMenu(){ 
+    // do NOT reset state.selectedIndex here — preserve selection for wheel navigation
+    const items = state.menuItems.map((m,i)=>`<div class="py-2 px-3 ${i===state.selectedIndex? 'bg-slate-700 rounded' : ''}" data-i="${i}">${escapeHtml(m)}</div>`).join('');
+    renderScreen(`<div class="h-full overflow-hidden"><div class="space-y-1">${items}</div></div>`);
+  }
   function updateMenuSelection(dir){ const len = state.menuItems.length; state.selectedIndex = (state.selectedIndex + dir + len) % len; renderMainMenu(); }
 
   // ========== Now Playing ==========
@@ -274,18 +290,76 @@
   async function prev(){ try{ await apiNoJson('/me/player/previous',{method:'POST'}); await renderNowPlaying(); }catch(e){ showError(e.message); } }
   async function setVolume(percent){ try{ await apiNoJson(`/me/player/volume?volume_percent=${Math.max(0,Math.min(100,percent))}`, {method:'PUT'}); setStatus('Volume '+percent+'%','text-emerald-400'); }catch(e){ showError(e.message); } }
 
-  // ========== Wheel interaction (with haptic & tick) ==========
+  // ========== Clean, modern Click-wheel (Pointer Events + pointer capture) ==========
   const wheel = document.getElementById('wheel');
-  let wheelActive = false, lastAngle = null, accumulated = 0;
+  let isWheelActive = false;
+  let lastAngle = null;
+  let accumulated = 0;
 
-  function getAngleFromEvent(e){ const rect = wheel.getBoundingClientRect(); const cx = rect.left + rect.width/2; const cy = rect.top + rect.height/2; const x = (e.clientX ?? (e.touches && e.touches[0].clientX)) - cx; const y = (e.clientY ?? (e.touches && e.touches[0].clientY)) - cy; const angle = Math.atan2(y, x) * 180 / Math.PI; return (angle + 360) % 360; }
+  // Utility: calculate angle in degrees [0,360)
+  function getAngleFromEvent(e){
+    const rect = wheel.getBoundingClientRect();
+    const cx = rect.left + rect.width/2;
+    const cy = rect.top + rect.height/2;
+    // prefer clientX/clientY from pointer events
+    const x = (e.clientX ?? (e.touches && e.touches[0].clientX)) - cx;
+    const y = (e.clientY ?? (e.touches && e.touches[0].clientY)) - cy;
+    let angle = Math.atan2(y, x) * 180 / Math.PI;
+    if(angle < 0) angle += 360;
+    return angle;
+  }
 
-  function onPointerDown(e){ e.preventDefault(); wheelActive = true; lastAngle = getAngleFromEvent(e); accumulated = 0; }
-  function onPointerMove(e){ if(!wheelActive) return; e.preventDefault(); const ang = getAngleFromEvent(e); let delta = ang - lastAngle; if(delta > 180) delta -= 360; if(delta < -180) delta += 360; accumulated += delta; lastAngle = ang; if(Math.abs(accumulated) >= SCROLL_STEP_ANGLE){ const steps = Math.floor(Math.abs(accumulated) / SCROLL_STEP_ANGLE); const dir = accumulated > 0 ? 1 : -1; for(let i=0;i<steps;i++) handleWheelScroll(dir); accumulated = accumulated % SCROLL_STEP_ANGLE; } }
-  function onPointerUp(e){ wheelActive = false; lastAngle = null; accumulated = 0; }
+  function onWheelPointerDown(e){
+    // Only respond to primary button/touch
+    if(e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    isWheelActive = true;
+    lastAngle = getAngleFromEvent(e);
+    accumulated = 0;
+    // capture pointer so we continue to receive moves even if pointer leaves the element
+    try { e.target.setPointerCapture(e.pointerId); } catch (err) {}
+  }
 
+  function onWheelPointerMove(e){
+    if(!isWheelActive) return;
+    e.preventDefault();
+    const ang = getAngleFromEvent(e);
+    let delta = ang - lastAngle;
+    // normalize across 0/360 boundary
+    if(delta > 180) delta -= 360;
+    if(delta < -180) delta += 360;
+    accumulated += delta;
+    lastAngle = ang;
+
+    // fire steps when threshold reached
+    if(Math.abs(accumulated) >= SCROLL_STEP_ANGLE){
+      const steps = Math.floor(Math.abs(accumulated) / SCROLL_STEP_ANGLE);
+      const dir = accumulated > 0 ? 1 : -1;
+      for(let i=0;i<steps;i++) handleWheelScroll(dir);
+      // keep remainder
+      accumulated = accumulated % SCROLL_STEP_ANGLE;
+    }
+  }
+
+  function onWheelPointerUp(e){
+    if(isWheelActive){
+      isWheelActive = false;
+      lastAngle = null;
+      accumulated = 0;
+    }
+    try { e.target.releasePointerCapture && e.target.releasePointerCapture(e.pointerId); } catch (err) {}
+  }
+
+  // attach pointer listeners (NO touch listeners)
+  wheel.addEventListener('pointerdown', onWheelPointerDown);
+  wheel.addEventListener('pointermove', onWheelPointerMove);
+  wheel.addEventListener('pointerup', onWheelPointerUp);
+  wheel.addEventListener('pointercancel', onWheelPointerUp);
+
+  // tick + vibrate feedback
   function playTick(){ try{ if(tick){ tick.volume = 0.05; tick.currentTime = 0; tick.play().catch(()=>{}); } }catch(e){} }
-  function handleWheelScroll(dir){ // haptic
+
+  function handleWheelScroll(dir){
     if(navigator.vibrate) navigator.vibrate(5);
     playTick();
     const top = screenStack[screenStack.length-1];
@@ -305,23 +379,17 @@
   document.getElementById('prev-btn').addEventListener('click', ()=>{ prev(); });
   document.getElementById('next-btn').addEventListener('click', ()=>{ next(); });
   document.getElementById('play-btn').addEventListener('click', ()=>{ togglePlayPause(); });
-  document.getElementById('center').addEventListener('click', async ()=>{
+
+  // center click now bound to the child element
+  document.getElementById('center-click').addEventListener('click', async ()=>{
     const top = screenStack[screenStack.length-1];
     if(!top){ const sel = state.selectedIndex; const item = state.menuItems[sel]; if(item === 'Now Playing') pushScreen(renderNowPlaying); else if(item === 'Playlists') { await fetchPlaylists(true); pushScreen(renderList); } else if(item.startsWith('Library')) { await fetchLiked(true); pushScreen(renderList); } else if(item === 'Devices'){ await renderDevices(); pushScreen(renderDevices); } else if(item === 'Volume'){ pushScreen(renderNowPlaying); setStatus('Use wheel to change volume','text-emerald-400'); } else if(item === 'Settings'){ pushScreen(renderSettings); renderSettings(); } }
     else if(top.renderFn === renderList){ listSelect(); }
     else if(top.renderFn === renderNowPlaying){ togglePlayPause(); }
   });
 
-  // pointer events
-  wheel.addEventListener('pointerdown', onPointerDown);
-  window.addEventListener('pointermove', onPointerMove);
-  window.addEventListener('pointerup', onPointerUp);
-  wheel.addEventListener('touchstart', onPointerDown, {passive:false});
-  wheel.addEventListener('touchmove', onPointerMove, {passive:false});
-  window.addEventListener('touchend', onPointerUp);
-
   // keyboard
-  window.addEventListener('keydown', (e)=>{ if(e.key === 'ArrowUp') handleWheelScroll(-1); if(e.key === 'ArrowDown') handleWheelScroll(1); if(e.key === 'ArrowLeft') prev(); if(e.key === 'ArrowRight') next(); if(e.key === 'Enter') document.getElementById('center').click(); if(e.key === 'Backspace') document.getElementById('menu-btn').click(); });
+  window.addEventListener('keydown', (e)=>{ if(e.key === 'ArrowUp') handleWheelScroll(-1); if(e.key === 'ArrowDown') handleWheelScroll(1); if(e.key === 'ArrowLeft') prev(); if(e.key === 'ArrowRight') next(); if(e.key === 'Enter') document.getElementById('center-click').click(); if(e.key === 'Backspace') document.getElementById('menu-btn').click(); });
 
   // ========== Settings screen ==========
   function renderSettings(){ renderScreen(`<div class="h-full flex flex-col">
