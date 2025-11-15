@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>iPod — Spotify Controller (single file v3)</title>
+  <title>iPod — Spotify Controller (single file v2)</title>
   <!-- Tailwind via CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- PWA manifest (data URI) -->
@@ -13,167 +13,93 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="iPod">
-
   <style>
-    :root{
-      --ipod-primary-color: #d9dee9;
-      --ipod-highlight-color: #f6f7f9;
-      --ipod-shadow-color: rgba(0,0,0,0.45);
-      --wheel-bg: linear-gradient(180deg,#e9edf1,#cfd6dd);
-      --center-bg: linear-gradient(180deg,#cfd6dd,#c0c8cf);
-      --accent: #2f6be3;
-    }
-
+    /* Base visuals */
     body { background: radial-gradient(ellipse at top left,#0f172a 0%, #071020 60%); }
-    .ipod { width: min(460px,94vw); max-width:460px; aspect-ratio: 9/16; transition: background .25s, box-shadow .25s, transform .12s; }
-
-    .ipod-body {
-      width:100%; height:100%; display:flex; flex-direction:column; align-items:center; padding:20px; border-radius:36px;
-      background-image: linear-gradient(180deg, var(--ipod-highlight-color) 0%, var(--ipod-primary-color) 60%);
-      box-shadow: 0 18px 40px rgba(2,6,23,0.6), inset 0 6px 12px rgba(255,255,255,0.12), inset 0 -8px 18px rgba(0,0,0,0.06);
-      position:relative; overflow:hidden;
-    }
-
-    .screen-frame{ width:100%; border-radius:18px; padding:14px; box-sizing:border-box; background:linear-gradient(180deg, rgba(0,0,0,0.45), rgba(0,0,0,0.2)); box-shadow: inset 0 6px 30px rgba(0,0,0,0.6); }
-    .screen-inner{ background: linear-gradient(180deg, rgba(8,10,12,0.95), rgba(16,18,20,0.96)); border-radius:10px; padding:10px; height:100%; box-shadow: inset 0 6px 20px rgba(255,255,255,0.02); color:#e6eefc; }
-    .screen-glare{ position:absolute; pointer-events:none; inset:0; border-radius:18px; background: linear-gradient(45deg, rgba(255,255,255,0.03), rgba(255,255,255,0) 25%); mix-blend-mode:overlay; }
-
-    .wheel-shell{ display:flex; align-items:center; justify-content:center; width:100%; flex:1; }
-    .wheel-ring{ width:70%; max-width:320px; aspect-ratio:1; border-radius:999px; display:flex; align-items:center; justify-content:center; background:var(--wheel-bg); box-shadow: inset 0 14px 30px rgba(255,255,255,0.06), inset 0 -18px 36px rgba(0,0,0,0.18), 0 6px 20px rgba(0,0,0,0.4); position:relative; }
-
-    .wheel-ring::after{ content:''; position:absolute; inset:8% 8%; border-radius:999px; box-shadow: inset 0 8px 18px rgba(0,0,0,0.2); }
-
-    .center-btn{ width:44%; aspect-ratio:1; border-radius:999px; display:flex; align-items:center; justify-content:center; background:var(--center-bg); box-shadow: 0 8px 20px rgba(0,0,0,0.45), inset 0 6px 12px rgba(255,255,255,0.03); font-weight:600; }
-
-    /* fixes: tracker layer and button pointer-events */
-    #wheel { pointer-events: none; }
-    #wheel-tracker { pointer-events: auto; position:absolute; inset:0; z-index:40; border-radius:999px; }
-    .wheel-btn { pointer-events: auto !important; z-index:50; }
-    #center { pointer-events: none; }             /* visual center ring doesn't intercept */
-    #center-click { pointer-events: auto; z-index:55; display:flex; align-items:center; justify-content:center; width:100%; height:100%; }
-
-    .menu-item { padding:8px 10px; border-radius:4px; color:#cbd5e1; }
-    .menu-selected { background: var(--accent); color:white; padding:8px 10px; border-radius:4px; }
-
-    .small-muted { font-size:11px; color:rgba(203,213,225,0.7); }
-
-    .swatch { width:34px; height:34px; border-radius:8px; box-shadow:0 4px 10px rgba(2,6,23,0.45); cursor:pointer; border:2px solid rgba(255,255,255,0.06); }
-    .swatch.selected { outline:3px solid rgba(255,255,255,0.18); }
-
+    .ipod { width: min(420px,92vw); max-width:420px; aspect-ratio: 9/16; transition: background .25s, box-shadow .25s; }
+    .screen { height: 38%; }
+    .wheel { height: 42%; }
+    .ipod-inner { box-shadow: inset 0 8px 30px rgba(0,0,0,0.6); }
+    .center-btn { box-shadow: 0 6px 18px rgba(0,0,0,0.5); }
+    .wheel-ring { box-shadow: inset 0 -6px 18px rgba(255,255,255,0.02); }
     @media (max-width:420px){ .ipod { aspect-ratio: 3/5 } }
+
+    /* Themes */
+    .theme-classic { background: linear-gradient(#D9DEE9,#BCC3CC); }
+    .theme-classic .wheel { background: linear-gradient(#e2e6ea,#cfd6dd); }
+    .theme-black { background: linear-gradient(#1f2937,#111827); }
+    .theme-black .wheel { background: linear-gradient(#374151,#1f2937); }
+    .theme-blue { background: linear-gradient(#e6f0ff,#cfe0ff); }
+    .theme-blue .wheel { background: linear-gradient(#93c0ff,#6ba8ff); }
+
+    /* small UI tweaks */
+    .loading { opacity: 0.8; }
   </style>
 </head>
 <body class="min-h-screen flex items-center justify-center p-4 text-slate-100">
-  <div id="ipod" class="ipod ipod-body" role="application" aria-label="iPod Spotify controller">
+  <div id="ipod" class="ipod theme-classic bg-slate-800 rounded-3xl p-4 ipod-inner relative flex flex-col items-center" role="application" aria-label="iPod Spotify controller">
     <!-- Screen -->
-    <div id="screen" class="screen-frame w-full" style="height:38%">
-      <div class="screen-inner relative h-full">
-        <div id="screen-top" class="flex items-center justify-between text-xs text-slate-300">
-          <div id="app-title" class="font-semibold">Spotify</div>
-          <div id="screen-status" class="text-amber-300">Not logged in</div>
-        </div>
-        <div id="screen-body" class="mt-2 h-[calc(100% - 44px)] overflow-hidden text-sm"></div>
-        <div id="screen-bottom" class="mt-2 small-muted">Use the wheel to navigate • Center button to select</div>
-        <div class="screen-glare"></div>
+    <div id="screen" class="screen w-full bg-gradient-to-b from-slate-900 to-slate-800 rounded-xl p-3 text-sm flex flex-col">
+      <div id="screen-top" class="flex items-center justify-between text-xs text-slate-300">
+        <div id="app-title" class="font-semibold">Spotify</div>
+        <div id="screen-status" class="text-amber-300">Not logged in</div>
       </div>
+      <div id="screen-body" class="mt-2 flex-1 overflow-hidden">
+        <!-- Dynamic content -->
+      </div>
+      <div id="screen-bottom" class="mt-2 text-xs text-slate-400">Use the wheel to navigate • Center button to select</div>
     </div>
 
     <!-- Click wheel -->
-    <div class="wheel-shell w-full mt-4">
-      <!-- visible wheel (graphics) -->
-      <div id="wheel" class="wheel-ring">
-        <!-- tracker sits above wheel graphics but under buttons (so wheel handles rotation; buttons still clickable) -->
-        <div id="wheel-tracker" aria-hidden="true"></div>
-
-        <!-- buttons (ensure they have .wheel-btn and sit above tracker) -->
-        <button id="menu-btn" class="wheel-btn absolute top-6 left-1/2 -translate-x-1/2 text-xs text-slate-200">MENU</button>
-        <button id="prev-btn" class="wheel-btn absolute left-6 top-1/2 -translate-y-1/2 text-xs text-slate-200">◀</button>
-        <button id="next-btn" class="wheel-btn absolute right-6 top-1/2 -translate-y-1/2 text-xs text-slate-200">▶</button>
-        <button id="play-btn" class="wheel-btn absolute bottom-6 left-1/2 -translate-x-1/2 text-xs text-slate-200">▶/▮▮</button>
-
-        <!-- center visual (no pointer events) -->
-        <div id="center" class="center-btn">
-          <!-- inner clickable element receives clicks -->
-          <div id="center-click" role="button" aria-label="OK">OK</div>
-        </div>
+    <div class="wheel w-full flex-1 flex items-center justify-center mt-4">
+      <div id="wheel" class="relative w-64 h-64 max-w-[78vw] max-h-[78vw] rounded-full bg-slate-700 wheel-ring flex items-center justify-center touch-none select-none">
+        <button id="menu-btn" class="absolute top-6 left-1/2 -translate-x-1/2 text-xs text-slate-200">MENU</button>
+        <button id="prev-btn" class="absolute left-6 top-1/2 -translate-y-1/2 text-xs text-slate-200">◀</button>
+        <button id="next-btn" class="absolute right-6 top-1/2 -translate-y-1/2 text-xs text-slate-200">▶</button>
+        <button id="play-btn" class="absolute bottom-6 left-1/2 -translate-x-1/2 text-xs text-slate-200">▶/▮▮</button>
+        <div id="center" class="center-btn w-28 h-28 rounded-full bg-slate-600 flex items-center justify-center text-slate-100 font-semibold">OK</div>
       </div>
     </div>
-
-    <div class="text-[11px] small-muted mt-3">Single-file v3 · Tailwind · Vanilla JS · PWA</div>
+    <div class="text-[11px] text-slate-400 mt-3">Single-file demo · Tailwind · Vanilla JS · Responsive</div>
   </div>
 
+  <!-- Inline tiny click sound (very quiet) -->
   <audio id="tick-audio" src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=" preload="auto"></audio>
 
   <script>
-  // ================= CONFIG =================
+  // ========== CONFIG ==========
   const CLIENT_ID = '105219b481564acabe23262bdac8ea2d';
+  // Update REDIRECT_URI to your GitHub Pages site (exact match required in Spotify dev dashboard)
   const REDIRECT_URI = 'https://harry-ellis6589.github.io/Ipod/';
   const SCOPES = [
-    'user-read-playback-state', 'user-modify-playback-state', 'user-read-currently-playing', 'playlist-read-private', 'user-library-read'
+    'user-read-playback-state',
+    'user-modify-playback-state',
+    'user-read-currently-playing',
+    'playlist-read-private',
+    'user-library-read'
   ].join(' ');
 
-  // ================= State & elements =================
+  // ========== STATE & SETTINGS ==========
   const Screen = document.getElementById('screen-body');
   const ipodEl = document.getElementById('ipod');
   const tick = document.getElementById('tick-audio');
 
-  const defaultSettings = {
-    themeModel: localStorage.getItem('ipod_model') || 'classic_silver',
-    sensitivity: localStorage.getItem('ipod_sensitivity') || 'medium'
-  };
+  const defaultSettings = { theme: localStorage.getItem('ipod_theme')||'classic', sensitivity: localStorage.getItem('ipod_sensitivity')||'medium' };
   let settings = {...defaultSettings};
 
+  // SCROLL_STEP_ANGLE based on sensitivity
   const SENS_MAP = { low:20, medium:12, high:8 };
   let SCROLL_STEP_ANGLE = SENS_MAP[settings.sensitivity] || 12;
 
-  const IPOD_MODELS = {
-    classic_silver: {
-      name:'Classic (Silver)', vars: {
-        '--ipod-primary-color':'#d9dee9', '--ipod-highlight-color':'#f6f7f9', '--wheel-bg':'linear-gradient(180deg,#e9edf1,#cfd6dd)', '--center-bg':'linear-gradient(180deg,#cfd6dd,#c0c8cf)', '--accent':'#2f6be3'
-      }
-    },
-    video_black: {
-      name:'iPod Video (Black)', vars: {
-        '--ipod-primary-color':'#111216', '--ipod-highlight-color':'#25282b', '--wheel-bg':'linear-gradient(180deg,#3b3f44,#191a1c)', '--center-bg':'linear-gradient(180deg,#2b2f33,#181a1c)', '--accent':'#1fb954'
-      }
-    },
-    u2_edition: {
-      name:'U2 Edition', vars: {
-        '--ipod-primary-color':'#0b0b0b', '--ipod-highlight-color':'#141414', '--wheel-bg':'linear-gradient(180deg,#1a1a1a,#0c0c0c)', '--center-bg':'linear-gradient(180deg,#2c0000,#150000)', '--accent':'#e03131'
-      }
-    },
-    modern_metal: {
-      name:'Modern Metal', vars: {
-        '--ipod-primary-color':'#eef2f6', '--ipod-highlight-color':'#ffffff', '--wheel-bg':'linear-gradient(180deg,#f8fafc,#dfe7ee)', '--center-bg':'linear-gradient(180deg,#eef5fb,#d9e6f3)', '--accent':'#4f46e5'
-      }
-    },
-    nano_pop: {
-      name:'Nano Pop', vars: {
-        '--ipod-primary-color':'#ffd6e0', '--ipod-highlight-color':'#fff5f8', '--wheel-bg':'linear-gradient(180deg,#ffe8f0,#ffd0e0)', '--center-bg':'linear-gradient(180deg,#ffd6e0,#ffb6cc)', '--accent':'#ff4d6d'
-      }
-    }
-  };
-
-  function applyModel(modelName){
-    const model = IPOD_MODELS[modelName];
-    if(!model) return;
-    const root = document.documentElement;
-    for(const k in model.vars) root.style.setProperty(k, model.vars[k]);
-    settings.themeModel = modelName;
-    localStorage.setItem('ipod_model', modelName);
+  function applyTheme(){
+    ipodEl.classList.remove('theme-classic','theme-black','theme-blue');
+    if(settings.theme === 'classic') ipodEl.classList.add('theme-classic');
+    if(settings.theme === 'black') ipodEl.classList.add('theme-black');
+    if(settings.theme === 'mini') ipodEl.classList.add('theme-blue');
   }
-  applyModel(settings.themeModel);
+  applyTheme();
 
-  function applyCustomColor(primary, highlight){
-    const root = document.documentElement;
-    root.style.setProperty('--ipod-primary-color', primary);
-    root.style.setProperty('--ipod-highlight-color', highlight);
-    settings.primaryColor = primary;
-    settings.highlightColor = highlight;
-    localStorage.setItem('ipod_primary_color', primary);
-    localStorage.setItem('ipod_highlight_color', highlight);
-  }
-
+  // ========== Helpers ==========
   function qsParse(qs){ const params = new URLSearchParams(qs.replace(/^\?/, '')); const out = {}; for(const [k,v] of params) out[k]=v; return out; }
   function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
   function setStatus(text, cls='text-amber-300'){ const el = document.getElementById('screen-status'); el.textContent = text; el.className = cls; }
@@ -184,20 +110,65 @@
   function generateCodeVerifier(){ const array = new Uint8Array(56); crypto.getRandomValues(array); return Array.from(array, dec2hex).join(''); }
   async function generateCodeChallenge(code_verifier){ const data = new TextEncoder().encode(code_verifier); const digest = await crypto.subtle.digest('SHA-256', data); const base64 = btoa(String.fromCharCode(...new Uint8Array(digest))).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_'); return base64; }
 
-  async function startAuth(){ if(!CLIENT_ID || CLIENT_ID.includes('REPLACE')){ showError('CLIENT_ID is not set.'); return; } const code_verifier = generateCodeVerifier(); const code_challenge = await generateCodeChallenge(code_verifier); const stateVal = Math.random().toString(36).slice(2); sessionStorage.setItem('pkce_code_verifier', code_verifier); sessionStorage.setItem('pkce_state', stateVal);
-    const url = new URL('https://accounts.spotify.com/authorize'); url.searchParams.set('response_type','code'); url.searchParams.set('client_id', CLIENT_ID); url.searchParams.set('scope', SCOPES); url.searchParams.set('redirect_uri', REDIRECT_URI); url.searchParams.set('state', stateVal); url.searchParams.set('code_challenge_method', 'S256'); url.searchParams.set('code_challenge', code_challenge); window.location = url.toString(); }
+  // ========== Auth ==========
+  async function startAuth(){
+    if(!CLIENT_ID || CLIENT_ID.includes('REPLACE')){ showError('CLIENT_ID is not set.'); return; }
+    const code_verifier = generateCodeVerifier();
+    const code_challenge = await generateCodeChallenge(code_verifier);
+    const stateVal = Math.random().toString(36).slice(2);
+    sessionStorage.setItem('pkce_code_verifier', code_verifier);
+    sessionStorage.setItem('pkce_state', stateVal);
 
-  async function exchangeToken(code, code_verifier){ const body = new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: REDIRECT_URI, client_id: CLIENT_ID, code_verifier }); const res = await fetch('https://accounts.spotify.com/api/token',{ method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: body.toString() }); if(!res.ok) throw new Error('Token endpoint returned ' + res.status); const data = await res.json(); const now = Date.now(); localStorage.setItem('sp_access_token', data.access_token); localStorage.setItem('sp_refresh_token', data.refresh_token || ''); localStorage.setItem('sp_token_expires_at', now + (data.expires_in * 1000)); }
+    const url = new URL('https://accounts.spotify.com/authorize');
+    url.searchParams.set('response_type','code');
+    url.searchParams.set('client_id', CLIENT_ID);
+    url.searchParams.set('scope', SCOPES);
+    url.searchParams.set('redirect_uri', REDIRECT_URI);
+    url.searchParams.set('state', stateVal);
+    url.searchParams.set('code_challenge_method', 'S256');
+    url.searchParams.set('code_challenge', code_challenge);
+    window.location = url.toString();
+  }
 
-  async function refreshAccessToken(){ const refresh_token = localStorage.getItem('sp_refresh_token'); if(!refresh_token) throw new Error('No refresh token available'); const body = new URLSearchParams({ grant_type: 'refresh_token', refresh_token, client_id: CLIENT_ID }); const res = await fetch('https://accounts.spotify.com/api/token',{ method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: body.toString() }); if(!res.ok) throw new Error('Refresh failed: ' + res.status); const data = await res.json(); const now = Date.now(); localStorage.setItem('sp_access_token', data.access_token); localStorage.setItem('sp_token_expires_at', now + (data.expires_in * 1000)); if(data.refresh_token) localStorage.setItem('sp_refresh_token', data.refresh_token); }
+  async function exchangeToken(code, code_verifier){
+    const body = new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: REDIRECT_URI, client_id: CLIENT_ID, code_verifier });
+    const res = await fetch('https://accounts.spotify.com/api/token',{ method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: body.toString() });
+    if(!res.ok) throw new Error('Token endpoint returned ' + res.status);
+    const data = await res.json();
+    const now = Date.now();
+    localStorage.setItem('sp_access_token', data.access_token);
+    localStorage.setItem('sp_refresh_token', data.refresh_token || '');
+    localStorage.setItem('sp_token_expires_at', now + (data.expires_in * 1000));
+  }
 
-  async function getAccessToken(){ let token = localStorage.getItem('sp_access_token'); const expires = Number(localStorage.getItem('sp_token_expires_at')||0); if(!token) return null; if(Date.now() > expires - 60000){ try{ await refreshAccessToken(); token = localStorage.getItem('sp_access_token'); } catch(e){ console.warn('refresh failed',e); throw e; } } return token; }
+  async function refreshAccessToken(){
+    const refresh_token = localStorage.getItem('sp_refresh_token');
+    if(!refresh_token) throw new Error('No refresh token available');
+    const body = new URLSearchParams({ grant_type: 'refresh_token', refresh_token, client_id: CLIENT_ID });
+    const res = await fetch('https://accounts.spotify.com/api/token',{ method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: body.toString() });
+    if(!res.ok) throw new Error('Refresh failed: ' + res.status);
+    const data = await res.json();
+    const now = Date.now();
+    localStorage.setItem('sp_access_token', data.access_token);
+    localStorage.setItem('sp_token_expires_at', now + (data.expires_in * 1000));
+    if(data.refresh_token) localStorage.setItem('sp_refresh_token', data.refresh_token);
+  }
+
+  async function getAccessToken(){
+    let token = localStorage.getItem('sp_access_token');
+    const expires = Number(localStorage.getItem('sp_token_expires_at')||0);
+    if(!token) return null;
+    if(Date.now() > expires - 60000){ try{ await refreshAccessToken(); token = localStorage.getItem('sp_access_token'); } catch(e){ console.warn('refresh failed',e); throw e; } }
+    return token;
+  }
 
   function logout(){ ['sp_access_token','sp_refresh_token','sp_token_expires_at'].forEach(k=>localStorage.removeItem(k)); setStatus('Not logged in','text-amber-300'); renderMainWelcome(); }
 
+  // ========== Spotify API helpers ==========
   async function api(path, opts={}){ const token = await getAccessToken(); if(!token) throw new Error('Not authenticated'); const res = await fetch('https://api.spotify.com/v1' + path, {headers:{'Authorization':'Bearer '+token}, ...opts}); if(res.status===401){ await refreshAccessToken(); const token2 = await getAccessToken(); const res2 = await fetch('https://api.spotify.com/v1' + path, {headers:{'Authorization':'Bearer '+token2}, ...opts}); if(!res2.ok) throw new Error('Spotify API error: ' + res2.status); return res2.json(); } if(!res.ok) throw new Error('Spotify API error: ' + res.status); return res.json(); }
   async function apiNoJson(path, opts={}){ const token = await getAccessToken(); if(!token) throw new Error('Not authenticated'); const res = await fetch('https://api.spotify.com/v1' + path, {headers:{'Authorization':'Bearer '+token}, ...opts}); return res; }
 
+  // ========== App state & screens ==========
   let screenStack = [];
   const state = { menuItems: ['Now Playing','Playlists','Library (Liked Songs)','Devices','Volume','Settings'], selectedIndex:0, currentList: [], listSelectedIndex:0, listNextUrl: null };
 
@@ -209,35 +180,38 @@
       <div class="flex flex-col items-center justify-center h-full">
         <div class="text-sm font-semibold mb-3">iPod — Spotify Controller</div>
         <button id="login" class="px-4 py-2 rounded bg-emerald-500 text-slate-900 font-medium">Login with Spotify</button>
-        <div class="mt-3 text-xs small-muted">Please sign in to control your Spotify playback.</div>
+        <div class="mt-3 text-xs text-slate-400">Please sign in to control your Spotify playback.</div>
       </div>
     `); document.getElementById('login').addEventListener('click', startAuth); setStatus('Not logged in'); } else { renderMainMenu(); setStatus('Connected','text-emerald-400'); } }
 
-  function renderMainMenu(){ const items = state.menuItems.map((m,i)=>`<div class="py-2 px-3 ${i===state.selectedIndex? 'menu-selected' : 'menu-item'}" data-i="${i}">${escapeHtml(m)}</div>`).join(''); renderScreen(`<div class="h-full overflow-hidden"><div class="space-y-1">${items}</div></div>`); }
+  function renderMainMenu(){ state.selectedIndex = 0; const items = state.menuItems.map((m,i)=>`<div class="py-2 px-3 ${i===state.selectedIndex? 'bg-slate-700 rounded' : ''}" data-i="${i}">${escapeHtml(m)}</div>`).join(''); renderScreen(`<div class="h-full overflow-hidden"><div class="space-y-1">${items}</div></div>`); }
   function updateMenuSelection(dir){ const len = state.menuItems.length; state.selectedIndex = (state.selectedIndex + dir + len) % len; renderMainMenu(); }
 
+  // ========== Now Playing ==========
   async function renderNowPlaying(){ try{ const playback = await api('/me/player'); if(!playback || !playback.item){ renderScreen(`<div class="p-3">No music currently playing. Press OK to refresh.</div>`); return; } const item = playback.item; const artists = item.artists.map(a=>a.name).join(', '); const albumArt = (item.album && item.album.images && item.album.images[0]) ? item.album.images[0].url : ''; const progress = playback.progress_ms || 0; const duration = item.duration_ms || 1; const pct = Math.round(progress / duration * 100); const deviceName = playback.device && playback.device.name ? playback.device.name : 'Unknown device'; renderScreen(`
       <div class="h-full flex flex-col">
         <div class="flex items-center gap-3">
           <img src="${albumArt}" alt="album" class="w-20 h-20 object-cover rounded" />
           <div>
             <div class="font-semibold">${escapeHtml(item.name)}</div>
-            <div class="text-xs small-muted">${escapeHtml(artists)}</div>
-            <div class="text-xs small-muted">${escapeHtml(item.album.name)}</div>
-            <div class="text-xs small-muted mt-1">Playing on: ${escapeHtml(deviceName)}</div>
+            <div class="text-xs text-slate-400">${escapeHtml(artists)}</div>
+            <div class="text-xs text-slate-400">${escapeHtml(item.album.name)}</div>
+            <div class="text-xs text-slate-400 mt-1">Playing on: ${escapeHtml(deviceName)}</div>
           </div>
         </div>
         <div class="mt-3">
           <div class="h-2 bg-slate-700 rounded overflow-hidden"><div style="width:${pct}%" class="h-full bg-emerald-400"></div></div>
-          <div class="text-xs small-muted mt-1">${formatMs(progress)} / ${formatMs(duration)}</div>
+          <div class="text-xs text-slate-400 mt-1">${formatMs(progress)} / ${formatMs(duration)}</div>
         </div>
-        <div class="mt-3 text-xs small-muted">Use left/right on wheel for Prev/Next, center for Play/Pause</div>
+        <div class="mt-3 text-xs text-slate-500">Use left/right on wheel for Prev/Next, center for Play/Pause</div>
       </div>
     `);
   }catch(e){ showError(e.message); } }
   function formatMs(ms){ const s = Math.floor(ms/1000); const m = Math.floor(s/60); const sec = s%60; return m+':'+(sec<10?'0':'')+sec; }
 
+  // ========== Playlists & Library (with pagination) ==========
   async function fetchPlaylists(initial=true){ try{ if(initial) { renderScreen('<div class="p-3">Loading playlists…</div>'); state.currentList = []; state.listNextUrl = null; state.listSelectedIndex = 0; }
+      // use next url if present
       const url = state.listNextUrl || '/me/playlists?limit=50';
       const res = await api(url);
       const items = (res.items||[]).map(p=>({id:p.id,name:p.name,tracks:p.tracks.total,uri:p.uri}));
@@ -256,14 +230,32 @@
     }catch(e){ showError(e.message); } }
 
   function renderList(title){
-    const items = state.currentList.map((it,i)=>`<div class="py-2 px-3 ${i===state.listSelectedIndex? 'bg-slate-700 rounded text-white' : ''}" data-i="${i}">${escapeHtml(it.name)} ${it.artists?'<div class="text-xs small-muted">'+escapeHtml(it.artists)+'</div>':''}</div>`).join('');
-    const more = state.listNextUrl ? '<div class="p-2 text-xs small-muted">Scroll to bottom to load more...</div>' : '';
-    renderScreen(`<div class="h-full flex flex-col"><div class="text-xs small-muted mb-2">${escapeHtml(title)}</div><div id="list-scroll" class="overflow-auto" style="max-height:100%">${items}${more}</div></div>`);
+    const items = state.currentList.map((it,i)=>`<div class="py-2 px-3 ${i===state.listSelectedIndex? 'bg-slate-700 rounded' : ''}" data-i="${i}">${escapeHtml(it.name)} ${it.artists?'<div class="text-xs text-slate-400">'+escapeHtml(it.artists)+'</div>':''}</div>`).join('');
+    const more = state.listNextUrl ? '<div class="p-2 text-xs text-slate-400">Scroll to bottom to load more...</div>' : '';
+    renderScreen(`<div class="h-full flex flex-col"><div class="text-xs text-slate-300 mb-2">${escapeHtml(title)}</div><div id="list-scroll" class="overflow-auto" style="max-height:100%">${items}${more}</div></div>`);
+    // attach click handlers for accessibility
     document.getElementById('list-scroll').addEventListener('click', (e)=>{ const node = e.target.closest('[data-i]'); if(node){ state.listSelectedIndex = Number(node.dataset.i); listSelect(); } });
   }
 
-  async function listLoadMoreIfNeeded(){ if(state.listSelectedIndex >= state.currentList.length - 1 && state.listNextUrl){ try{ await fetchNextListPage(); }catch(e){ console.warn(e); } } }
-  async function fetchNextListPage(){ if(!state.listNextUrl) return; const url = state.listNextUrl; const res = await api(url); const items = (res.items||[]).map(i=>{ const t = i.track || i; return {name:t.name, artists: t.artists ? t.artists.map(a=>a.name).join(', ') : undefined, uri: t.uri}; }); state.currentList = state.currentList.concat(items); state.listNextUrl = res.next ? res.next.replace('https://api.spotify.com/v1','') : null; renderList(''); }
+  async function listLoadMoreIfNeeded(){
+    // If selected index at end and next exists, fetch more
+    if(state.listSelectedIndex >= state.currentList.length - 1 && state.listNextUrl){
+      // fetch next page
+      try{ await (state.currentList === [] ? Promise.resolve() : fetchNextListPage()); }catch(e){ console.warn(e); }
+    }
+  }
+  async function fetchNextListPage(){
+    if(!state.listNextUrl) return;
+    const url = state.listNextUrl;
+    const res = await api(url);
+    const items = (res.items||[]).map(i=>{
+      const t = i.track || i;
+      return {name:t.name, artists: t.artists ? t.artists.map(a=>a.name).join(', ') : undefined, uri: t.uri};
+    });
+    state.currentList = state.currentList.concat(items);
+    state.listNextUrl = res.next ? res.next.replace('https://api.spotify.com/v1','') : null;
+    renderList('');
+  }
 
   async function listSelect(){ const item = state.currentList[state.listSelectedIndex]; if(!item) return; if(item.tracks !== undefined){ await fetchPlaylistTracks(item.id, item.name); pushScreen(renderList); } else { try{ await playUri(item.uri); pushScreen(renderNowPlaying); }catch(e){ showError(e.message); } } }
 
@@ -271,72 +263,30 @@
 
   async function playUri(uri){ try{ const body = JSON.stringify({ uris: uri && uri.startsWith('spotify:track:') ? [uri] : undefined, context_uri: uri && (uri.startsWith('spotify:playlist:')||uri.startsWith('spotify:album:')) ? uri : undefined }); const res = await apiNoJson('/me/player/play', { method: 'PUT', body }); if(res.status===404){ showError('No active device found. Open Spotify on a device and try again.'); } else if(res.status>=400) showError('Playback failed: ' + res.status); else pushScreen(renderNowPlaying); }catch(e){ showError(e.message); } }
 
-  async function renderDevices(){ try{ renderScreen('<div class="p-3">Loading devices…</div>'); const data = await api('/me/player/devices'); const devices = data.devices||[]; if(devices.length===0) { renderScreen('<div class="p-3">No devices found. Open Spotify on a device and try again.</div>'); return; } state.currentList = devices.map(d=>({id:d.id,name:d.name,type:d.type,is_active:d.is_active})); state.listSelectedIndex = 0; renderScreen(`<div class="h-full flex flex-col"><div class="text-xs small-muted mb-2">Available Devices</div><div id="device-list" class="overflow-auto">${state.currentList.map((d,i)=>`<div class="py-2 px-3 ${d.is_active? 'bg-emerald-700 rounded text-white' : ''}" data-i="${i}">${escapeHtml(d.name)} <div class="text-xs small-muted">${escapeHtml(d.type)}</div></div>`).join('')}</div></div>`); document.getElementById('device-list').addEventListener('click', async (e)=>{ const node = e.target.closest('[data-i]'); if(!node) return; const idx = Number(node.dataset.i); const dev = state.currentList[idx]; try{ await apiNoJson('/me/player', { method:'PUT', body: JSON.stringify({ device_ids: [dev.id], play: true }) }); setStatus('Transferred to ' + dev.name,'text-emerald-400'); await renderNowPlaying(); }catch(err){ showError(err.message); } }); }catch(e){ showError(e.message); } }
+  // ========== Devices ==========
+  async function renderDevices(){ try{ renderScreen('<div class="p-3">Loading devices…</div>'); const data = await api('/me/player/devices'); const devices = data.devices||[]; if(devices.length===0) { renderScreen('<div class="p-3">No devices found. Open Spotify on a device and try again.</div>'); return; } state.currentList = devices.map(d=>({id:d.id,name:d.name,type:d.type,is_active:d.is_active})); state.listSelectedIndex = 0; renderScreen(`<div class="h-full flex flex-col"><div class="text-xs text-slate-300 mb-2">Available Devices</div><div id="device-list" class="overflow-auto">${state.currentList.map((d,i)=>`<div class="py-2 px-3 ${d.is_active? 'bg-emerald-700 rounded' : ''}" data-i="${i}">${escapeHtml(d.name)} <div class="text-xs text-slate-400">${escapeHtml(d.type)}</div></div>`).join('')}</div></div>`);
+    document.getElementById('device-list').addEventListener('click', async (e)=>{ const node = e.target.closest('[data-i]'); if(!node) return; const idx = Number(node.dataset.i); const dev = state.currentList[idx]; try{ await apiNoJson('/me/player', { method:'PUT', body: JSON.stringify({ device_ids: [dev.id], play: true }) }); setStatus('Transferred to ' + dev.name,'text-emerald-400'); await renderNowPlaying(); }catch(err){ showError(err.message); } });
+  }catch(e){ showError(e.message); } }
 
+  // ========== Player controls ==========
   async function togglePlayPause(){ try{ const playback = await api('/me/player'); if(!playback) return; if(playback.is_playing){ await apiNoJson('/me/player/pause',{method:'PUT'}); } else { await apiNoJson('/me/player/play',{method:'PUT'}); } await renderNowPlaying(); }catch(e){ showError(e.message); } }
   async function next(){ try{ await apiNoJson('/me/player/next',{method:'POST'}); await renderNowPlaying(); }catch(e){ showError(e.message); } }
   async function prev(){ try{ await apiNoJson('/me/player/previous',{method:'POST'}); await renderNowPlaying(); }catch(e){ showError(e.message); } }
   async function setVolume(percent){ try{ await apiNoJson(`/me/player/volume?volume_percent=${Math.max(0,Math.min(100,percent))}`, {method:'PUT'}); setStatus('Volume '+percent+'%','text-emerald-400'); }catch(e){ showError(e.message); } }
 
-  // ========== Wheel refinement: delta-based accumulator ==========
-  const wheelTracker = document.getElementById('wheel-tracker');
-  let wheelActive = false;
-  let lastAngle = null;
-  let accumulator = 0;
+  // ========== Wheel interaction (with haptic & tick) ==========
+  const wheel = document.getElementById('wheel');
+  let wheelActive = false, lastAngle = null, accumulated = 0;
 
-  function getAngleFromEvent(e){
-    const rect = wheelTracker.getBoundingClientRect();
-    const cx = rect.left + rect.width/2;
-    const cy = rect.top + rect.height/2;
-    const x = (e.clientX ?? (e.touches && e.touches[0].clientX)) - cx;
-    const y = (e.clientY ?? (e.touches && e.touches[0].clientY)) - cy;
-    let angle = Math.atan2(y, x) * 180 / Math.PI;
-    if(angle < 0) angle += 360;
-    return angle;
-  }
+  function getAngleFromEvent(e){ const rect = wheel.getBoundingClientRect(); const cx = rect.left + rect.width/2; const cy = rect.top + rect.height/2; const x = (e.clientX ?? (e.touches && e.touches[0].clientX)) - cx; const y = (e.clientY ?? (e.touches && e.touches[0].clientY)) - cy; const angle = Math.atan2(y, x) * 180 / Math.PI; return (angle + 360) % 360; }
 
-  function onWheelDown(e){
-    if(e.pointerType === 'mouse' && e.button !== 0) return;
-    e.preventDefault();
-    wheelActive = true;
-    lastAngle = getAngleFromEvent(e);
-    accumulator = 0;
-  }
+  function onPointerDown(e){ e.preventDefault(); wheelActive = true; lastAngle = getAngleFromEvent(e); accumulated = 0; }
+  function onPointerMove(e){ if(!wheelActive) return; e.preventDefault(); const ang = getAngleFromEvent(e); let delta = ang - lastAngle; if(delta > 180) delta -= 360; if(delta < -180) delta += 360; accumulated += delta; lastAngle = ang; if(Math.abs(accumulated) >= SCROLL_STEP_ANGLE){ const steps = Math.floor(Math.abs(accumulated) / SCROLL_STEP_ANGLE); const dir = accumulated > 0 ? 1 : -1; for(let i=0;i<steps;i++) handleWheelScroll(dir); accumulated = accumulated % SCROLL_STEP_ANGLE; } }
+  function onPointerUp(e){ wheelActive = false; lastAngle = null; accumulated = 0; }
 
-  function onWheelMove(e){
-    if(!wheelActive) return;
-    e.preventDefault();
-    const angle = getAngleFromEvent(e);
-    let delta = angle - lastAngle;
-    if(delta > 180) delta -= 360;
-    if(delta < -180) delta += 360;
-    accumulator += delta;
-    lastAngle = angle;
-    if(Math.abs(accumulator) >= SCROLL_STEP_ANGLE){
-      const steps = Math.floor(Math.abs(accumulator) / SCROLL_STEP_ANGLE);
-      const dir = accumulator > 0 ? 1 : -1;
-      for(let i=0;i<steps;i++) handleWheelScroll(dir);
-      accumulator -= Math.sign(accumulator) * steps * SCROLL_STEP_ANGLE;
-    }
-  }
-
-  function onWheelUp(e){
-    if(!wheelActive) return;
-    wheelActive = false;
-    lastAngle = null;
-    accumulator = 0;
-  }
-
-  // pointer bindings: tracker handles down, window handles move/up so buttons still work
-  wheelTracker.addEventListener('pointerdown', onWheelDown);
-  window.addEventListener('pointermove', onWheelMove);
-  window.addEventListener('pointerup', onWheelUp);
-  window.addEventListener('pointercancel', onWheelUp);
-
-  function playTick(){ try{ if(tick){ tick.volume = 0.06; tick.currentTime = 0; tick.play().catch(()=>{}); } }catch(e){} }
-
-  function handleWheelScroll(dir){
-    if(navigator.vibrate) navigator.vibrate(6);
+  function playTick(){ try{ if(tick){ tick.volume = 0.05; tick.currentTime = 0; tick.play().catch(()=>{}); } }catch(e){} }
+  function handleWheelScroll(dir){ // haptic
+    if(navigator.vibrate) navigator.vibrate(5);
     playTick();
     const top = screenStack[screenStack.length-1];
     if(!top){ updateMenuSelection(dir); }
@@ -346,76 +296,82 @@
     else { updateMenuSelection(dir); }
   }
 
-  function listMove(dir){ const len = state.currentList.length || 1; state.listSelectedIndex = (state.listSelectedIndex + dir + len) % len; renderList(''); if(state.listSelectedIndex >= state.currentList.length - 1 && state.listNextUrl){ fetchNextListPage().catch(e=>console.warn(e)); } }
+  // list movement
+  function listMove(dir){ const len = state.currentList.length || 1; state.listSelectedIndex = (state.listSelectedIndex + dir + len) % len; renderList(''); // if at end and next exists, fetch more
+    if(state.listSelectedIndex >= state.currentList.length - 1 && state.listNextUrl){ fetchNextListPage().catch(e=>console.warn(e)); } }
 
-  // ========== Buttons ==========
+  // wheel button listeners
   document.getElementById('menu-btn').addEventListener('click', ()=>{ popScreen(); });
   document.getElementById('prev-btn').addEventListener('click', ()=>{ prev(); });
   document.getElementById('next-btn').addEventListener('click', ()=>{ next(); });
   document.getElementById('play-btn').addEventListener('click', ()=>{ togglePlayPause(); });
-
-  document.getElementById('center-click').addEventListener('click', async ()=>{
+  document.getElementById('center').addEventListener('click', async ()=>{
     const top = screenStack[screenStack.length-1];
-    if(!top){
-      const sel = state.selectedIndex;
-      const item = state.menuItems[sel];
-      if(item === 'Now Playing') pushScreen(renderNowPlaying);
-      else if(item === 'Playlists') { await fetchPlaylists(true); pushScreen(renderList); }
-      else if(item.startsWith('Library')) { await fetchLiked(true); pushScreen(renderList); }
-      else if(item === 'Devices'){ await renderDevices(); pushScreen(renderDevices); }
-      else if(item === 'Volume'){ pushScreen(renderNowPlaying); setStatus('Use wheel to change volume','text-emerald-400'); }
-      else if(item === 'Settings'){ pushScreen(renderSettings); renderSettings(); }
-    } else if(top.renderFn === renderList){ listSelect(); }
+    if(!top){ const sel = state.selectedIndex; const item = state.menuItems[sel]; if(item === 'Now Playing') pushScreen(renderNowPlaying); else if(item === 'Playlists') { await fetchPlaylists(true); pushScreen(renderList); } else if(item.startsWith('Library')) { await fetchLiked(true); pushScreen(renderList); } else if(item === 'Devices'){ await renderDevices(); pushScreen(renderDevices); } else if(item === 'Volume'){ pushScreen(renderNowPlaying); setStatus('Use wheel to change volume','text-emerald-400'); } else if(item === 'Settings'){ pushScreen(renderSettings); renderSettings(); } }
+    else if(top.renderFn === renderList){ listSelect(); }
     else if(top.renderFn === renderNowPlaying){ togglePlayPause(); }
   });
 
-  window.addEventListener('keydown', (e)=>{ if(e.key === 'ArrowUp') handleWheelScroll(-1); if(e.key === 'ArrowDown') handleWheelScroll(1); if(e.key === 'ArrowLeft') prev(); if(e.key === 'ArrowRight') next(); if(e.key === 'Enter') document.getElementById('center-click').click(); if(e.key === 'Backspace') document.getElementById('menu-btn').click(); });
+  // pointer events
+  wheel.addEventListener('pointerdown', onPointerDown);
+  window.addEventListener('pointermove', onPointerMove);
+  window.addEventListener('pointerup', onPointerUp);
+  wheel.addEventListener('touchstart', onPointerDown, {passive:false});
+  wheel.addEventListener('touchmove', onPointerMove, {passive:false});
+  window.addEventListener('touchend', onPointerUp);
 
+  // keyboard
+  window.addEventListener('keydown', (e)=>{ if(e.key === 'ArrowUp') handleWheelScroll(-1); if(e.key === 'ArrowDown') handleWheelScroll(1); if(e.key === 'ArrowLeft') prev(); if(e.key === 'ArrowRight') next(); if(e.key === 'Enter') document.getElementById('center').click(); if(e.key === 'Backspace') document.getElementById('menu-btn').click(); });
+
+  // ========== Settings screen ==========
   function renderSettings(){ renderScreen(`<div class="h-full flex flex-col">
-      <div class="text-xs small-muted mb-2">Settings</div>
+      <div class="text-xs text-slate-300 mb-2">Settings</div>
       <div class="space-y-2">
-        <div class="py-2 px-3 bg-slate-700 rounded" data-action="model">Model</div>
-        <div class="py-2 px-3 bg-slate-700 rounded" data-action="color">Color</div>
+        <div class="py-2 px-3 bg-slate-700 rounded" data-action="theme">Theme</div>
         <div class="py-2 px-3 bg-slate-700 rounded" data-action="sensitivity">Wheel Sensitivity</div>
         <div class="py-2 px-3 bg-slate-700 rounded" data-action="logout">Logout</div>
       </div>
     </div>`);
-    Screen.querySelector('[data-action="model"]').addEventListener('click', ()=>{ renderModelMenu(); });
-    Screen.querySelector('[data-action="color"]').addEventListener('click', ()=>{ renderColorMenu(); });
+    Screen.querySelector('[data-action="theme"]').addEventListener('click', ()=>{ renderThemeMenu(); });
     Screen.querySelector('[data-action="sensitivity"]').addEventListener('click', ()=>{ renderSensitivityMenu(); });
     Screen.querySelector('[data-action="logout"]').addEventListener('click', ()=>{ logout(); }); }
 
-  function renderModelMenu(){
-    const names = Object.keys(IPOD_MODELS);
-    const items = names.map((k,i)=>`<div class="py-2 px-3 ${settings.themeModel===k? 'menu-selected' : 'menu-item'}" data-model="${k}">${escapeHtml(IPOD_MODELS[k].name)}</div>`).join('');
-    renderScreen(`<div class="h-full flex flex-col"><div class="text-xs small-muted mb-2">Model</div><div class="space-y-1">${items}</div><div class="text-xs small-muted mt-3">Scroll to preview. Press OK to confirm.</div></div>`);
-    document.querySelectorAll('[data-model]').forEach(el=>el.addEventListener('click', (e)=>{ const m = e.currentTarget.dataset.model; applyModel(m); renderSettings(); }));
-    pushScreen(()=>{}); // placeholder so top exists
-    screenStack[screenStack.length-1] = { renderFn: renderModelMenu, meta: null };
-  }
+  function renderThemeMenu(){ renderScreen(`<div class="h-full flex flex-col"><div class="text-xs text-slate-300 mb-2">Theme</div><div class="space-y-2"><div class="py-2 px-3 ${settings.theme==='classic'?'bg-slate-700 rounded':''}" data-theme="classic">Classic (Silver)</div><div class="py-2 px-3 ${settings.theme==='black'?'bg-slate-700 rounded':''}" data-theme="black">Black</div><div class="py-2 px-3 ${settings.theme==='mini'?'bg-slate-700 rounded':''}" data-theme="mini">Mini (Blue)</div></div></div>`);
+    Screen.querySelectorAll('[data-theme]').forEach(el=>el.addEventListener('click',(e)=>{ settings.theme = e.currentTarget.dataset.theme; localStorage.setItem('ipod_theme', settings.theme); applyTheme(); renderSettings(); })); }
 
-  function renderColorMenu(){
-    const swatches = [ ['#d9dee9','#f6f7f9'], ['#111216','#25282b'], ['#ffd6e0','#fff5f8'], ['#e6f0ff','#dbeaff'], ['#e8fbe8','#dff5df'], ['#fff7e6','#fff0d1'], ['#f0e7ff','#e6dbff'], ['#fde2e2','#ffdede'] ];
-    const items = swatches.map((s,i)=>`<div class="swatch" data-s1="${s[0]}" data-s2="${s[1]}" style="background: linear-gradient(180deg, ${s[1]}, ${s[0]});"></div>`).join('');
-    renderScreen(`<div class="h-full flex flex-col"><div class="text-xs small-muted mb-2">Color</div><div class="grid grid-cols-6 gap-2">${items}</div><div class="text-xs small-muted mt-3">Pick a swatch to apply immediately. This overrides model primary colors.</div></div>`);
-    document.querySelectorAll('.swatch').forEach(el=>el.addEventListener('click',(e)=>{ const s1 = e.currentTarget.dataset.s1; const s2 = e.currentTarget.dataset.s2; applyCustomColor(s1,s2); renderSettings(); }));
-  }
-
-  function renderSensitivityMenu(){ renderScreen(`<div class="h-full flex flex-col"><div class="text-xs small-muted mb-2">Wheel Sensitivity</div><div class="space-y-2"><div class="py-2 px-3 ${settings.sensitivity==='low'?'menu-selected':'menu-item'}" data-s="low">Low</div><div class="py-2 px-3 ${settings.sensitivity==='medium'?'menu-selected':'menu-item'}" data-s="medium">Medium</div><div class="py-2 px-3 ${settings.sensitivity==='high'?'menu-selected':'menu-item'}" data-s="high">High</div></div></div>`);
+  function renderSensitivityMenu(){ renderScreen(`<div class="h-full flex flex-col"><div class="text-xs text-slate-300 mb-2">Wheel Sensitivity</div><div class="space-y-2"><div class="py-2 px-3 ${settings.sensitivity==='low'?'bg-slate-700 rounded':''}" data-s="low">Low</div><div class="py-2 px-3 ${settings.sensitivity==='medium'?'bg-slate-700 rounded':''}" data-s="medium">Medium</div><div class="py-2 px-3 ${settings.sensitivity==='high'?'bg-slate-700 rounded':''}" data-s="high">High</div></div></div>`);
     Screen.querySelectorAll('[data-s]').forEach(el=>el.addEventListener('click',(e)=>{ settings.sensitivity = e.currentTarget.dataset.s; localStorage.setItem('ipod_sensitivity', settings.sensitivity); SCROLL_STEP_ANGLE = SENS_MAP[settings.sensitivity]; renderSettings(); })); }
 
+  // ========== Redirect handling ==========
   async function handleRedirectCallback(){ const params = qsParse(location.search); if(params.error){ showError(params.error); return; } if(params.code){ const stateVal = params.state; const savedState = sessionStorage.getItem('pkce_state'); if(stateVal !== savedState){ showError('State mismatch'); return; } const code = params.code; const code_verifier = sessionStorage.getItem('pkce_code_verifier'); try{ await exchangeToken(code, code_verifier); const newUrl = REDIRECT_URI; history.replaceState({}, document.title, newUrl); initApp(); }catch(e){ showError('Token exchange failed: ' + e.message); } } }
 
-  async function initApp(){ try{ if(localStorage.getItem('sp_refresh_token')){ try{ await refreshAccessToken(); setStatus('Connected','text-emerald-400'); await renderNowPlaying(); return; }catch(e){ console.warn('Silent refresh failed',e); } } const token = await getAccessToken().catch(()=>null); if(token){ setStatus('Connected','text-emerald-400'); renderNowPlaying(); } else renderMainWelcome(); }catch(e){ showError(e.message); } }
+  // ========== Silent login on load (QoL) ==========
+  async function initApp(){ try{ // if refresh token exists, try silent refresh
+      if(localStorage.getItem('sp_refresh_token')){
+        try{ await refreshAccessToken(); setStatus('Connected','text-emerald-400'); // show now playing if possible
+          await renderNowPlaying(); return; }catch(e){ console.warn('Silent refresh failed',e); }
+      }
+      // otherwise normal flow
+      const token = await getAccessToken().catch(()=>null);
+      if(token){ setStatus('Connected','text-emerald-400'); renderNowPlaying(); }
+      else renderMainWelcome(); }catch(e){ showError(e.message); } }
 
-  if('serviceWorker' in navigator){ try{ const swCode = `self.addEventListener('install', function(e){ e.waitUntil(caches.open('ipod-shell-v3').then(function(cache){ return cache.addAll(['./','./index.html']); })); self.skipWaiting(); }); self.addEventListener('fetch', function(event){ const url = new URL(event.request.url); if(url.origin === location.origin){ event.respondWith(caches.match(event.request).then(function(response){ return response || fetch(event.request); })); } });`; const blob = new Blob([swCode], {type: 'application/javascript'}); const swUrl = URL.createObjectURL(blob); navigator.serviceWorker.register(swUrl).then(()=>console.log('Service worker registered')).catch(()=>{}); }catch(e){ console.warn('SW failed',e); } }
+  // ========== Service worker (simple shell caching) ==========
+  if('serviceWorker' in navigator){
+    try{
+      const swCode = `self.addEventListener('install', function(e){ e.waitUntil(caches.open('ipod-shell-v1').then(function(cache){ return cache.addAll(['./','./index.html']); })); self.skipWaiting(); });
+      self.addEventListener('fetch', function(event){ const url = new URL(event.request.url); if(url.origin === location.origin){ event.respondWith(caches.match(event.request).then(function(response){ return response || fetch(event.request); })); } });`;
+      const blob = new Blob([swCode], {type: 'application/javascript'});
+      const swUrl = URL.createObjectURL(blob);
+      navigator.serviceWorker.register(swUrl).then(()=>console.log('Service worker registered')).catch(()=>{});
+    }catch(e){ console.warn('SW failed',e); }
+  }
 
+  // ========== Init flow ==========
   (async ()=>{ await handleRedirectCallback(); await initApp(); })();
 
-  window._ipod = { startAuth, logout, getAccessToken, applyModel, applyCustomColor };
+  // small public helpers
+  window._ipod = { startAuth, logout, getAccessToken };
   </script>
 </body>
 </html>
-
-
-
