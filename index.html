@@ -195,8 +195,79 @@
 
   function logout(){ ['sp_access_token','sp_refresh_token','sp_token_expires_at'].forEach(k=>localStorage.removeItem(k)); setStatus('Not logged in','text-amber-300'); renderMainWelcome(); }
 
-  async function api(path, opts={}){ const token = await getAccessToken(); if(!token) throw new Error('Not authenticated'); const res = await fetch('https://api.spotify.com/v1' + path, {headers:{'Authorization':'Bearer '+token}, ...opts}); if(res.status===401){ await refreshAccessToken(); const token2 = await getAccessToken(); const res2 = await fetch('https://api.spotify.com/v1' + path, {headers:{'Authorization':'Bearer '+token2}, ...opts}); if(!res2.ok) throw new Error('Spotify API error: ' + res2.status); return res2.json(); } if(!res.ok) throw new Error('Spotify API error: ' + res.status); return res.json(); }
-  async function apiNoJson(path, opts={}){ const token = await getAccessToken(); if(!token) throw new Error('Not authenticated'); const res = await fetch('https://api.spotify.com/v1' + path, {headers:{'Authorization':'Bearer '+token}, ...opts}); return res; }
+  // FIXED: Handle empty responses properly
+  async function api(path, opts = {}) {
+    const token = await getAccessToken();
+    if (!token) throw new Error('Not authenticated');
+
+    const res = await fetch('https://api.spotify.com/v1' + path, {
+      headers: { 'Authorization': 'Bearer ' + token },
+      ...opts
+    });
+
+    if (res.status === 401) {
+      await refreshAccessToken();
+      const token2 = await getAccessToken();
+      const res2 = await fetch('https://api.spotify.com/v1' + path, {
+        headers: { 'Authorization': 'Bearer ' + token2 },
+        ...opts
+      });
+      if (!res2.ok) throw new Error('Spotify API error: ' + res2.status);
+      
+      // Handle empty responses
+      if (res2.status === 204) {
+        return null;
+      }
+      return res2.json();
+    }
+
+    if (!res.ok) throw new Error('Spotify API error: ' + res.status);
+    
+    // Handle empty responses
+    if (res.status === 204) {
+      return null;
+    }
+    
+    return res.json();
+  }
+
+  // FIXED: Better handling of API responses without JSON parsing
+  async function apiNoJson(path, opts = {}) {
+    const token = await getAccessToken();
+    if (!token) throw new Error('Not authenticated');
+    
+    const res = await fetch('https://api.spotify.com/v1' + path, {
+      headers: { 'Authorization': 'Bearer ' + token },
+      ...opts
+    });
+    
+    // For 204 No Content responses, just return the response
+    if (res.status === 204) {
+      return res;
+    }
+    
+    // For other responses, check if they're ok but don't try to parse JSON
+    if (!res.ok) {
+      let errorMessage = `Spotify API error: ${res.status}`;
+      try {
+        // Try to get error details if available
+        const errorText = await res.text();
+        if (errorText) {
+          try {
+            const errorData = JSON.parse(errorText);
+            errorMessage += ` - ${errorData.error?.message || errorText}`;
+          } catch {
+            errorMessage += ` - ${errorText}`;
+          }
+        }
+      } catch {
+        errorMessage += ` - ${res.statusText}`;
+      }
+      throw new Error(errorMessage);
+    }
+    
+    return res;
+  }
 
   let screenStack = [];
   const state = { menuItems: ['Now Playing','Playlists','Library (Liked Songs)','Devices','Volume','Settings'], selectedIndex:0, currentList: [], listSelectedIndex:0, listNextUrl: null };
@@ -269,14 +340,86 @@
 
   async function fetchPlaylistTracks(playlistId, playlistName){ try{ renderScreen('<div class="p-3">Loading playlist tracks…</div>'); const data = await api(`/playlists/${playlistId}/tracks?limit=100`); const items = (data.items||[]).map(i=>({name:i.track.name,artists:i.track.artists.map(a=>a.name).join(', '),uri:i.track.uri})); state.currentList = items; state.listSelectedIndex = 0; state.listNextUrl = null; renderList(playlistName); }catch(e){ showError(e.message); } }
 
-  async function playUri(uri){ try{ const body = JSON.stringify({ uris: uri && uri.startsWith('spotify:track:') ? [uri] : undefined, context_uri: uri && (uri.startsWith('spotify:playlist:')||uri.startsWith('spotify:album:')) ? uri : undefined }); const res = await apiNoJson('/me/player/play', { method: 'PUT', body }); if(res.status===404){ showError('No active device found. Open Spotify on a device and try again.'); } else if(res.status>=400) showError('Playback failed: ' + res.status); else pushScreen(renderNowPlaying); }catch(e){ showError(e.message); } }
+  // FIXED: Better error handling for playUri
+  async function playUri(uri){ 
+    try{ 
+      const body = JSON.stringify({ 
+        uris: uri && uri.startsWith('spotify:track:') ? [uri] : undefined, 
+        context_uri: uri && (uri.startsWith('spotify:playlist:')||uri.startsWith('spotify:album:')) ? uri : undefined 
+      }); 
+      
+      const res = await apiNoJson('/me/player/play', { method: 'PUT', body }); 
+      
+      if(res.status === 404){ 
+        showError('No active device found. Open Spotify on a device and try again.'); 
+      } else if(res.status >= 400) { 
+        let errorMsg = 'Playback failed: ' + res.status;
+        try {
+          const errorText = await res.text();
+          if (errorText) {
+            try {
+              const errorData = JSON.parse(errorText);
+              errorMsg += ` - ${errorData.error?.message || errorText}`;
+            } catch {
+              errorMsg += ` - ${errorText}`;
+            }
+          }
+        } catch {
+          errorMsg += ` - ${res.statusText}`;
+        }
+        showError(errorMsg);
+      } else { 
+        pushScreen(renderNowPlaying); 
+      } 
+    }catch(e){ 
+      showError(e.message); 
+    } 
+  }
 
   async function renderDevices(){ try{ renderScreen('<div class="p-3">Loading devices…</div>'); const data = await api('/me/player/devices'); const devices = data.devices||[]; if(devices.length===0) { renderScreen('<div class="p-3">No devices found. Open Spotify on a device and try again.</div>'); return; } state.currentList = devices.map(d=>({id:d.id,name:d.name,type:d.type,is_active:d.is_active})); state.listSelectedIndex = 0; renderScreen(`<div class="h-full flex flex-col"><div class="text-xs small-muted mb-2">Available Devices</div><div id="device-list" class="overflow-auto">${state.currentList.map((d,i)=>`<div class="py-2 px-3 ${d.is_active? 'bg-emerald-700 rounded text-white' : ''}" data-i="${i}">${escapeHtml(d.name)} <div class="text-xs small-muted">${escapeHtml(d.type)}</div></div>`).join('')}</div></div>`); document.getElementById('device-list').addEventListener('click', async (e)=>{ const node = e.target.closest('[data-i]'); if(!node) return; const idx = Number(node.dataset.i); const dev = state.currentList[idx]; try{ await apiNoJson('/me/player', { method:'PUT', body: JSON.stringify({ device_ids: [dev.id], play: true }) }); setStatus('Transferred to ' + dev.name,'text-emerald-400'); await renderNowPlaying(); }catch(err){ showError(err.message); } }); }catch(e){ showError(e.message); } }
 
-  async function togglePlayPause(){ try{ const playback = await api('/me/player'); if(!playback) return; if(playback.is_playing){ await apiNoJson('/me/player/pause',{method:'PUT'}); } else { await apiNoJson('/me/player/play',{method:'PUT'}); } await renderNowPlaying(); }catch(e){ showError(e.message); } }
-  async function next(){ try{ await apiNoJson('/me/player/next',{method:'POST'}); await renderNowPlaying(); }catch(e){ showError(e.message); } }
-  async function prev(){ try{ await apiNoJson('/me/player/previous',{method:'POST'}); await renderNowPlaying(); }catch(e){ showError(e.message); } }
-  async function setVolume(percent){ try{ await apiNoJson(`/me/player/volume?volume_percent=${Math.max(0,Math.min(100,percent))}`, {method:'PUT'}); setStatus('Volume '+percent+'%','text-emerald-400'); }catch(e){ showError(e.message); } }
+  // FIXED: These functions now use apiNoJson which handles empty responses properly
+  async function togglePlayPause(){ 
+    try{ 
+      const playback = await api('/me/player'); 
+      if(!playback) return; 
+      if(playback.is_playing){ 
+        await apiNoJson('/me/player/pause',{method:'PUT'}); 
+      } else { 
+        await apiNoJson('/me/player/play',{method:'PUT'}); 
+      } 
+      await renderNowPlaying(); 
+    }catch(e){ 
+      showError(e.message); 
+    } 
+  }
+  
+  async function next(){ 
+    try{ 
+      await apiNoJson('/me/player/next',{method:'POST'}); 
+      await renderNowPlaying(); 
+    }catch(e){ 
+      showError(e.message); 
+    } 
+  }
+  
+  async function prev(){ 
+    try{ 
+      await apiNoJson('/me/player/previous',{method:'POST'}); 
+      await renderNowPlaying(); 
+    }catch(e){ 
+      showError(e.message); 
+    } 
+  }
+  
+  async function setVolume(percent){ 
+    try{ 
+      await apiNoJson(`/me/player/volume?volume_percent=${Math.max(0,Math.min(100,percent))}`, {method:'PUT'}); 
+      setStatus('Volume '+percent+'%','text-emerald-400'); 
+    }catch(e){ 
+      showError(e.message); 
+    } 
+  }
 
   // ========== Wheel refinement: delta-based accumulator ==========
   const wheelTracker = document.getElementById('wheel-tracker');
