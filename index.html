@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>iPod — Spotify Controller (single file)</title>
+  <!-- Tailwind via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* Extra styling for iPod look */
+    body { background: radial-gradient(ellipse at top left,#0f172a 0%, #071020 60%); }
+    .ipod { width: min(420px,92vw); max-width:420px; aspect-ratio: 9/16; }
+    .screen { height: 38%; }
+    .wheel { height: 42%; }
+    /* subtle inner shadow */
+    .ipod-inner { box-shadow: inset 0 8px 30px rgba(0,0,0,0.6); }
+    /* center button */
+    .center-btn { box-shadow: 0 6px 18px rgba(0,0,0,0.5); }
+    /* wheel ring */
+    .wheel-ring { box-shadow: inset 0 -6px 18px rgba(255,255,255,0.02); }
+    /* small responsive tweaks */
+    @media (max-width:420px){ .ipod { aspect-ratio: 3/5 } }
+  </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4 text-slate-100">
+  <div class="ipod bg-slate-800 rounded-3xl p-4 ipod-inner relative flex flex-col items-center" role="application" aria-label="iPod Spotify controller">
+    <!-- Screen -->
+    <div id="screen" class="screen w-full bg-gradient-to-b from-slate-900 to-slate-800 rounded-xl p-3 text-sm flex flex-col">
+      <!-- Top bar -->
+      <div id="screen-top" class="flex items-center justify-between text-xs text-slate-300">
+        <div id="app-title" class="font-semibold">Spotify</div>
+        <div id="screen-status" class="text-amber-300">Not logged in</div>
+      </div>
+      <div id="screen-body" class="mt-2 flex-1 overflow-hidden">
+        <!-- Dynamic content goes here -->
+      </div>
+      <div id="screen-bottom" class="mt-2 text-xs text-slate-400">Use the wheel to navigate • Center button to select</div>
+    </div>
+
+    <!-- Click wheel -->
+    <div class="wheel w-full flex-1 flex items-center justify-center mt-4">
+      <div id="wheel" class="relative w-64 h-64 max-w-[78vw] max-h-[78vw] rounded-full bg-slate-700 wheel-ring flex items-center justify-center touch-none select-none">
+        <!-- Wheel labels -->
+        <button id="menu-btn" class="absolute top-6 left-1/2 -translate-x-1/2 text-xs text-slate-200">MENU</button>
+        <button id="prev-btn" class="absolute left-6 top-1/2 -translate-y-1/2 text-xs text-slate-200">◀</button>
+        <button id="next-btn" class="absolute right-6 top-1/2 -translate-y-1/2 text-xs text-slate-200">▶</button>
+        <button id="play-btn" class="absolute bottom-6 left-1/2 -translate-x-1/2 text-xs text-slate-200">▶/▮▮</button>
+
+        <!-- Center button -->
+        <div id="center" class="center-btn w-28 h-28 rounded-full bg-slate-600 flex items-center justify-center text-slate-100 font-semibold">OK</div>
+      </div>
+    </div>
+
+    <!-- small footer note -->
+    <div class="text-[11px] text-slate-400 mt-3">Single-file demo · Tailwind · Vanilla JS · Responsive</div>
+  </div>
+
+  <script>
+  /*
+    IMPORTANT: Before using this file, set the CLIENT_ID and REDIRECT_URI values below.
+    1) Register an app at https://developer.spotify.com/dashboard/applications
+    2) Add your redirect URI (must match REDIRECT_URI in this file). For local testing you can use: http://localhost:5500/ (or the file:// origin when using certain static servers)
+    3) Set the CLIENT_ID value.
+
+    This file implements the Authorization Code Flow with PKCE in-browser (no client secret required).
+  */
+
+  const CLIENT_ID = 'REPLACE_WITH_YOUR_SPOTIFY_CLIENT_ID';
+  const REDIRECT_URI = window.location.origin + window.location.pathname; // default: same file URL
+  const SCOPES = [
+    'user-read-playback-state',
+    'user-modify-playback-state',
+    'user-read-currently-playing',
+    'playlist-read-private',
+    'user-library-read'
+  ].join(' ');
+
+  // --- Basic helpers ---
+  function qsParse(qs){
+    const params = new URLSearchParams(qs.replace(/^\?/, ''));
+    const out = {};
+    for(const [k,v] of params) out[k]=v;
+    return out;
+  }
+
+  function setStatus(text, color='amber-300'){
+    const el = document.getElementById('screen-status');
+    el.textContent = text;
+    el.className = color;
+  }
+
+  function showError(msg){
+    renderScreen(`<div class="p-3 text-red-300 text-sm">Error: ${escapeHtml(msg)}</div>`);
+    setStatus('Error', 'text-red-300');
+  }
+
+  function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  // --- PKCE helpers ---
+  function dec2hex(dec) { return ('0' + dec.toString(16)).substr(-2); }
+  function generateCodeVerifier(){
+    const array = new Uint8Array(56);
+    crypto.getRandomValues(array);
+    return Array.from(array, dec2hex).join('');
+  }
+  async function generateCodeChallenge(code_verifier){
+    const data = new TextEncoder().encode(code_verifier);
+    const digest = await crypto.subtle.digest('SHA-256', data);
+    const base64 = btoa(String.fromCharCode(...new Uint8Array(digest)))
+      .replace(/=/g, '')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_');
+    return base64;
+  }
+
+  // --- Auth flow ---
+  async function startAuth(){
+    if(!CLIENT_ID || CLIENT_ID.includes('REPLACE')){
+      showError('CLIENT_ID is not set. Open the file and set your Spotify Client ID.');
+      return;
+    }
+    const code_verifier = generateCodeVerifier();
+    const code_challenge = await generateCodeChallenge(code_verifier);
+    const state = Math.random().toString(36).slice(2);
+    sessionStorage.setItem('pkce_code_verifier', code_verifier);
+    sessionStorage.setItem('pkce_state', state);
+
+    const url = new URL('https://accounts.spotify.com/authorize');
+    url.searchParams.set('response_type','code');
+    url.searchParams.set('client_id', CLIENT_ID);
+    url.searchParams.set('scope', SCOPES);
+    url.searchParams.set('redirect_uri', REDIRECT_URI);
+    url.searchParams.set('state', state);
+    url.searchParams.set('code_challenge_method', 'S256');
+    url.searchParams.set('code_challenge', code_challenge);
+
+    // redirect to spotify login
+    window.location = url.toString();
+  }
+
+  async function handleRedirectCallback(){
+    const params = qsParse(location.search);
+    if(params.error) {
+      showError(params.error);
+      return;
+    }
+    if(params.code){
+      const state = params.state;
+      const savedState = sessionStorage.getItem('pkce_state');
+      if(state !== savedState){ showError('State mismatch'); return; }
+      const code = params.code;
+      const code_verifier = sessionStorage.getItem('pkce_code_verifier');
+      try{
+        await exchangeToken(code, code_verifier);
+        // remove code from url
+        const newUrl = REDIRECT_URI;
+        history.replaceState({}, document.title, newUrl);
+        initApp();
+      }catch(e){
+        showError('Token exchange failed: ' + e.message);
+      }
+    }
+  }
+
+  async function exchangeToken(code, code_verifier){
+    const body = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: REDIRECT_URI,
+      client_id: CLIENT_ID,
+      code_verifier
+    });
+    const res = await fetch('https://accounts.spotify.com/api/token',{
+      method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: body.toString()
+    });
+    if(!res.ok) throw new Error('Token endpoint returned ' + res.status);
+    const data = await res.json();
+    // store tokens
+    const now = Date.now();
+    localStorage.setItem('sp_access_token', data.access_token);
+    localStorage.setItem('sp_refresh_token', data.refresh_token || '');
+    localStorage.setItem('sp_token_expires_at', now + (data.expires_in * 1000));
+  }
+
+  async function refreshAccessToken(){
+    const refresh_token = localStorage.getItem('sp_refresh_token');
+    if(!refresh_token) throw new Error('No refresh token available');
+    const body = new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token,
+      client_id: CLIENT_ID
+    });
+    const res = await fetch('https://accounts.spotify.com/api/token',{
+      method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: body.toString()
+    });
+    if(!res.ok) throw new Error('Refresh failed: ' + res.status);
+    const data = await res.json();
+    const now = Date.now();
+    localStorage.setItem('sp_access_token', data.access_token);
+    localStorage.setItem('sp_token_expires_at', now + (data.expires_in * 1000));
+    if(data.refresh_token) localStorage.setItem('sp_refresh_token', data.refresh_token);
+  }
+
+  async function getAccessToken(){
+    let token = localStorage.getItem('sp_access_token');
+    const expires = Number(localStorage.getItem('sp_token_expires_at')||0);
+    if(!token) return null;
+    if(Date.now() > expires - 60000){ // refresh if within 60s
+      try{ await refreshAccessToken(); token = localStorage.getItem('sp_access_token'); }
+      catch(e){ console.warn('refresh failed',e); throw e; }
+    }
+    return token;
+  }
+
+  function logout(){
+    ['sp_access_token','sp_refresh_token','sp_token_expires_at'].forEach(k=>localStorage.removeItem(k));
+    setStatus('Not logged in','text-amber-300');
+    renderMainWelcome();
+  }
+
+  // --- Spotify API helpers ---
+  async function api(path, opts={}){
+    const token = await getAccessToken();
+    if(!token) throw new Error('Not authenticated');
+    const res = await fetch('https://api.spotify.com/v1' + path, {headers:{'Authorization':'Bearer '+token}, ...opts});
+    if(res.status===401){
+      // try refresh and retry once
+      await refreshAccessToken();
+      const token2 = await getAccessToken();
+      const res2 = await fetch('https://api.spotify.com/v1' + path, {headers:{'Authorization':'Bearer '+token2}, ...opts});
+      if(!res2.ok) throw new Error('Spotify API error: ' + res2.status);
+      return res2.json();
+    }
+    if(!res.ok) throw new Error('Spotify API error: ' + res.status);
+    return res.json();
+  }
+
+  async function apiNoJson(path, opts={}){
+    const token = await getAccessToken();
+    if(!token) throw new Error('Not authenticated');
+    const res = await fetch('https://api.spotify.com/v1' + path, {headers:{'Authorization':'Bearer '+token}, ...opts});
+    return res;
+  }
+
+  // --- UI & App State ---
+  const Screen = document.getElementById('screen-body');
+  let screenStack = [];
+  const state = { menuItems: ['Now Playing','Playlists','Library (Liked Songs)','Volume'], selectedIndex:0, currentList: [], listSelectedIndex:0 };
+
+  function pushScreen(renderFn, meta={}){ screenStack.push({renderFn,meta}); renderFn(meta); }
+  function popScreen(){ screenStack.pop(); const top = screenStack[screenStack.length-1]; if(top) top.renderFn(top.meta); else renderMainMenu(); }
+
+  function renderScreen(html){ Screen.innerHTML = html; }
+
+  function renderMainWelcome(){
+    const logged = !!localStorage.getItem('sp_access_token');
+    if(!logged){
+      renderScreen(`
+        <div class="flex flex-col items-center justify-center h-full">
+          <div class="text-sm font-semibold mb-3">iPod — Spotify Controller</div>
+          <button id="login" class="px-4 py-2 rounded bg-emerald-500 text-slate-900 font-medium">Login with Spotify</button>
+          <div class="mt-3 text-xs text-slate-400">Please sign in to control your Spotify playback.</div>
+        </div>
+      `);
+      document.getElementById('login').addEventListener('click', startAuth);
+      setStatus('Not logged in');
+    } else {
+      renderMainMenu();
+      setStatus('Connected','text-emerald-400');
+    }
+  }
+
+  function renderMainMenu(){
+    state.selectedIndex = 0;
+    const items = state.menuItems.map((m,i)=>`<div class="py-2 px-3 ${i===state.selectedIndex? 'bg-slate-700 rounded' : ''}" data-i="${i}">${escapeHtml(m)}</div>`).join('');
+    renderScreen(`<div class="h-full overflow-hidden"><div class="space-y-1">${items}</div></div>`);
+  }
+
+  function updateMenuSelection(dir){
+    const len = state.menuItems.length;
+    state.selectedIndex = (state.selectedIndex + dir + len) % len;
+    renderMainMenu();
+  }
+
+  // --- Now Playing ---
+  async function renderNowPlaying(){
+    try{
+      const playback = await api('/me/player');
+      if(!playback || !playback.item){
+        renderScreen(`<div class="p-3">No music currently playing. Press OK to refresh.</div>`);
+        return;
+      }
+      const item = playback.item;
+      const artists = item.artists.map(a=>a.name).join(', ');
+      const albumArt = (item.album && item.album.images && item.album.images[0]) ? item.album.images[0].url : '';
+      const progress = playback.progress_ms || 0;
+      const duration = item.duration_ms || 1;
+      const pct = Math.round(progress / duration * 100);
+      renderScreen(`
+        <div class="h-full flex flex-col">
+          <div class="flex items-center gap-3">
+            <img src="${albumArt}" alt="album" class="w-20 h-20 object-cover rounded" />
+            <div>
+              <div class="font-semibold">${escapeHtml(item.name)}</div>
+              <div class="text-xs text-slate-400">${escapeHtml(artists)}</div>
+              <div class="text-xs text-slate-400">${escapeHtml(item.album.name)}</div>
+            </div>
+          </div>
+          <div class="mt-3">
+            <div class="h-2 bg-slate-700 rounded overflow-hidden"><div style="width:${pct}%" class="h-full bg-emerald-400"></div></div>
+            <div class="text-xs text-slate-400 mt-1">${formatMs(progress)} / ${formatMs(duration)}</div>
+          </div>
+          <div class="mt-3 text-xs text-slate-500">Use left/right on wheel for Prev/Next, center for Play/Pause</div>
+        </div>
+      `);
+    }catch(e){ showError(e.message); }
+  }
+
+  function formatMs(ms){
+    const s = Math.floor(ms/1000); const m = Math.floor(s/60); const sec = s%60; return m+':'+(sec<10?'0':'')+sec;
+  }
+
+  // --- Playlists & Library ---
+  async function fetchPlaylists(){
+    try{
+      const data = await api('/me/playlists?limit=50');
+      const items = (data.items||[]).map(p=>({id:p.id,name:p.name,tracks:p.tracks.total,uri:p.uri}));
+      state.currentList = items; state.listSelectedIndex = 0;
+      renderList('Your Playlists');
+    }catch(e){ showError(e.message); }
+  }
+
+  async function fetchLiked(){
+    try{
+      const data = await api('/me/tracks?limit=50');
+      const items = (data.items||[]).map(t=>({id:t.track.id,name:t.track.name,artists:t.track.artists.map(a=>a.name).join(', '),uri:t.track.uri}));
+      state.currentList = items; state.listSelectedIndex = 0;
+      renderList('Liked Songs');
+    }catch(e){ showError(e.message); }
+  }
+
+  function renderList(title){
+    const items = state.currentList.map((it,i)=>`<div class="py-2 px-3 ${i===state.listSelectedIndex? 'bg-slate-700 rounded' : ''}" data-i="${i}">${escapeHtml(it.name)} ${it.artists?'<div class="text-xs text-slate-400">'+escapeHtml(it.artists)+'</div>':''}</div>`).join('');
+    renderScreen(`<div class="h-full flex flex-col"><div class="text-xs text-slate-300 mb-2">${escapeHtml(title)}</div><div class="overflow-hidden">${items}</div></div>`);
+  }
+
+  function listMove(dir){
+    const len = state.currentList.length || 1;
+    state.listSelectedIndex = (state.listSelectedIndex + dir + len) % len;
+    renderList('');
+  }
+
+  async function listSelect(){
+    const item = state.currentList[state.listSelectedIndex];
+    if(!item) return;
+    // if playlist (has tracks field) -> fetch tracks and show
+    if(item.tracks !== undefined){
+      await fetchPlaylistTracks(item.id, item.name);
+    } else {
+      // assume track
+      try{ await playUri(item.uri); pushScreen(renderNowPlaying); }catch(e){ showError(e.message); }
+    }
+  }
+
+  async function fetchPlaylistTracks(playlistId, playlistName){
+    try{
+      const data = await api(`/playlists/${playlistId}/tracks?limit=100`);
+      const items = (data.items||[]).map(i=>({name:i.track.name,artists:i.track.artists.map(a=>a.name).join(', '),uri:i.track.uri}));
+      state.currentList = items; state.listSelectedIndex = 0;
+      renderList(playlistName);
+    }catch(e){ showError(e.message); }
+  }
+
+  async function playUri(uri){
+    try{
+      // Start playback on user's active device
+      const body = JSON.stringify({ uris: uri.startsWith('spotify:track:') ? [uri] : undefined, context_uri: uri.startsWith('spotify:playlist:')||uri.startsWith('spotify:album:') ? uri : undefined });
+      const res = await apiNoJson('/me/player/play', { method: 'PUT', body });
+      if(res.status===404){ showError('No active device found. Open Spotify on a device and try again.'); }
+      else if(res.status>=400) showError('Playback failed: ' + res.status);
+      else pushScreen(renderNowPlaying);
+    }catch(e){ showError(e.message); }
+  }
+
+  // --- Player controls ---
+  async function togglePlayPause(){
+    try{
+      // get playback state
+      const playback = await api('/me/player');
+      if(!playback) return;
+      if(playback.is_playing){ await apiNoJson('/me/player/pause',{method:'PUT'}); }
+      else { await apiNoJson('/me/player/play',{method:'PUT'}); }
+      await renderNowPlaying();
+    }catch(e){ showError(e.message); }
+  }
+
+  async function next(){ try{ await apiNoJson('/me/player/next',{method:'POST'}); await renderNowPlaying(); }catch(e){ showError(e.message); } }
+  async function prev(){ try{ await apiNoJson('/me/player/previous',{method:'POST'}); await renderNowPlaying(); }catch(e){ showError(e.message); } }
+  async function setVolume(percent){ try{ await apiNoJson(`/me/player/volume?volume_percent=${Math.max(0,Math.min(100,percent))}`, {method:'PUT'}); setStatus('Volume '+percent+'%','text-emerald-400'); }catch(e){ showError(e.message); } }
+
+  // --- Wheel interaction ---
+  const wheel = document.getElementById('wheel');
+  let wheelActive = false, lastAngle = null, accumulated = 0;
+  const SCROLL_STEP_ANGLE = 12; // degrees per step
+
+  function getAngleFromEvent(e){
+    const rect = wheel.getBoundingClientRect();
+    const cx = rect.left + rect.width/2;
+    const cy = rect.top + rect.height/2;
+    const x = (e.clientX ?? (e.touches && e.touches[0].clientX)) - cx;
+    const y = (e.clientY ?? (e.touches && e.touches[0].clientY)) - cy;
+    const angle = Math.atan2(y, x) * 180 / Math.PI; // -180..180
+    return (angle + 360) % 360;
+  }
+
+  function onPointerDown(e){
+    e.preventDefault(); wheelActive = true; lastAngle = getAngleFromEvent(e); accumulated = 0;
+  }
+  function onPointerMove(e){ if(!wheelActive) return; e.preventDefault(); const ang = getAngleFromEvent(e); let delta = ang - lastAngle; if(delta > 180) delta -= 360; if(delta < -180) delta += 360; accumulated += delta; lastAngle = ang; // when accumulated exceeds step threshold, send navigation
+    if(Math.abs(accumulated) >= SCROLL_STEP_ANGLE){
+      const steps = Math.floor(Math.abs(accumulated) / SCROLL_STEP_ANGLE);
+      const dir = accumulated > 0 ? 1 : -1; // clockwise increases index
+      for(let i=0;i<steps;i++) handleWheelScroll(dir);
+      accumulated = accumulated % SCROLL_STEP_ANGLE;
+    }
+  }
+  function onPointerUp(e){ wheelActive = false; lastAngle = null; accumulated = 0; }
+
+  function handleWheelScroll(dir){
+    // Context-sensitive: if on main menu, move selection; if viewing list, move list selection; if now playing, adjust volume
+    const top = screenStack[screenStack.length-1];
+    if(!top){ // main menu
+      updateMenuSelection(dir);
+    } else if(top.renderFn === renderList){
+      listMove(dir);
+    } else if(top.renderFn === renderNowPlaying){
+      // change volume by 2% per step
+      (async ()=>{
+        try{
+          // get current volume
+          const playback = await api('/me/player');
+          const vol = (playback && playback.device && playback.device.volume_percent) ? playback.device.volume_percent : 50;
+          const nv = vol + dir*2;
+          await setVolume(nv);
+        }catch(e){ showError(e.message); }
+      })();
+    } else if(top.renderFn === renderMainMenu || !top){
+      updateMenuSelection(dir);
+    } else {
+      // default
+      updateMenuSelection(dir);
+    }
+  }
+
+  // wheel button listeners
+  document.getElementById('menu-btn').addEventListener('click', ()=>{ popScreen(); });
+  document.getElementById('prev-btn').addEventListener('click', ()=>{ prev(); });
+  document.getElementById('next-btn').addEventListener('click', ()=>{ next(); });
+  document.getElementById('play-btn').addEventListener('click', ()=>{ togglePlayPause(); });
+  document.getElementById('center').addEventListener('click', async ()=>{
+    const top = screenStack[screenStack.length-1];
+    if(!top){ // main menu
+      const sel = state.selectedIndex;
+      const item = state.menuItems[sel];
+      if(item === 'Now Playing') pushScreen(renderNowPlaying);
+      else if(item === 'Playlists') { await fetchPlaylists(); pushScreen(renderList); }
+      else if(item.startsWith('Library')) { await fetchLiked(); pushScreen(renderList); }
+      else if(item === 'Volume'){ pushScreen(renderNowPlaying); setStatus('Use wheel to change volume','text-emerald-400'); }
+    } else if(top.renderFn === renderList){ listSelect(); }
+    else if(top.renderFn === renderNowPlaying){ togglePlayPause(); }
+  });
+
+  // pointer events
+  wheel.addEventListener('pointerdown', onPointerDown);
+  window.addEventListener('pointermove', onPointerMove);
+  window.addEventListener('pointerup', onPointerUp);
+  wheel.addEventListener('touchstart', onPointerDown, {passive:false});
+  wheel.addEventListener('touchmove', onPointerMove, {passive:false});
+  window.addEventListener('touchend', onPointerUp);
+
+  // Keyboard accessibility: arrow keys and enter emulate wheel
+  window.addEventListener('keydown', (e)=>{
+    if(e.key === 'ArrowUp') handleWheelScroll(-1);
+    if(e.key === 'ArrowDown') handleWheelScroll(1);
+    if(e.key === 'ArrowLeft') prev();
+    if(e.key === 'ArrowRight') next();
+    if(e.key === 'Enter') document.getElementById('center').click();
+    if(e.key === 'Backspace') document.getElementById('menu-btn').click();
+  });
+
+  // --- Init & Redirect handling ---
+  async function initApp(){
+    try{
+      const token = await getAccessToken().catch(()=>null);
+      if(token){ setStatus('Connected','text-emerald-400'); renderMainMenu(); }
+      else renderMainWelcome();
+    }catch(e){ showError(e.message); }
+  }
+
+  (async ()=>{
+    // If redirected back from Spotify
+    await handleRedirectCallback();
+    initApp();
+  })();
+
+  // small utilities
+  window._ipod = { startAuth, logout, getAccessToken };
+  </script>
+</body>
+</html>
