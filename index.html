@@ -67,7 +67,20 @@
 
     /* responsive */
     @media (max-width:420px){ .ipod { aspect-ratio: 3/5 } }
-  </style>
+  
+  /* Click-wheel fixes */
+  #wheel { pointer-events: none; }
+  #wheel-tracker { pointer-events: auto; position:absolute; inset:0; z-index:40; }
+  .wheel-btn { pointer-events: auto !important; z-index:50; }
+  #center { pointer-events: none; }
+  #center-click { pointer-events: auto; }
+</style>ick-wheel fixes */
+  #wheel { pointer-events: none; }
+  #wheel-tracker { pointer-events: auto; position:absolute; inset:0; z-index:40; }
+  .wheel-btn { pointer-events: auto !important; z-index:50; }
+  #center { pointer-events: none; }
+  #center-click { pointer-events: auto; }
+</style>
 </head>
 <body class="min-h-screen flex items-center justify-center p-4 text-slate-100">
   <div id="ipod" class="ipod ipod-body" role="application" aria-label="iPod Spotify controller">
@@ -78,15 +91,16 @@
           <div id="app-title" class="font-semibold">Spotify</div>
           <div id="screen-status" class="text-amber-300">Not logged in</div>
         </div>
-        <div id="screen-body" class="mt-2 h-[calc(100% - 44px)] overflow-hidden text-sm"></div>
-        <div id="screen-bottom" class="mt-2 small-muted">Use the wheel to navigate • Center button to select</div>
+        <div id="screen-body" class="mt-2 h-[calc(100% - 44px)] o$1
+    <div id="wheel-tracker"></div>ll-muted">Use the wheel to navigate • Center button to select</div>
         <div class="screen-glare"></div>
       </div>
     </div>
 
     <!-- Click wheel -->
     <div class="wheel-shell w-full mt-4">
-      <div id="wheel" class="wheel-ring touch-none select-none" aria-hidden="false">
+      <div id="wheel" class="relative">
+    <div id="whe
         <button id="menu-btn" class="absolute top-6 left-1/2 -translate-x-1/2 text-xs text-slate-200">MENU</button>
         <button id="prev-btn" class="absolute left-6 top-1/2 -translate-y-1/2 text-xs text-slate-200">◀</button>
         <button id="next-btn" class="absolute right-6 top-1/2 -translate-y-1/2 text-xs text-slate-200">▶</button>
@@ -278,9 +292,9 @@
   let accumulator = 0;
   let lastTimestamp = 0; // for optional velocity
 
-  function getAngleFromEvent(e){ const rect = wheelEl.getBoundingClientRect(); const cx = rect.left + rect.width/2; const cy = rect.top + rect.height/2; const x = (e.clientX ?? (e.touches && e.touches[0].clientX)) - cx; const y = (e.clientY ?? (e.touches && e.touches[0].clientY)) - cy; let angle = Math.atan2(y, x) * 180 / Math.PI; if(angle < 0) angle += 360; return angle; }
+  function getAngleFromEvent(e){ const rect = wheelEl.getBoundingClientRect(); const cx = rect.left + rect.width/2; const cy = rect.top + rect.height/2; const x = (e.clientX ?? (e.touches && e.touches[0].clientX)) - cx; const y = (e.clientY ?? (e.touches && e.touches[0].clientY)) - cy; let angle = Math.atan2(y, x) * 180 / Math.PI; if(angle < 0) angle/* removed setPointerCapture */ngle; }
 
-  function onWheelDown(e){ if(e.pointerType === 'mouse' && e.button !== 0) return; e.preventDefault(); wheelActive = true; lastAngle = getAngleFromEvent(e); accumulator = 0; lastTimestamp = e.timeStamp || Date.now(); try{ e.target.setPointerCapture(e.pointerId); }catch(err){} }
+  function onWheelDown(e){ if(e.pointerType === 'mouse' && e.button !== 0) return; e.preventDefault(); wheelActive = true; lastAngle = getAngleFromEvent(e); accumulator = 0; lastTimestamp = e.timeStamp || Date.now(); try{ e.target.setPointerCapture(tch(err){} }
 
   function onWheelMove(e){ if(!wheelActive) return; e.preventDefault(); const angle = getAngleFromEvent(e); let delta = angle - lastAngle; // wrap handling
     if(delta > 180) delta -= 360; if(delta < -180) delta += 360; // accumulate small deltas
